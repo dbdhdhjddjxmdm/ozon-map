@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ozon_map</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
+    
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { overflow: hidden; min-height: 100vh; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+        #map { width: 100vw; height: 100vh; }
+
+        /* Кнопки зума */
+        .abcde { position: absolute; top: 50%; right: 20px; transform: translateY(-50%); z-index: 1000; }
+        #a { background-color: #0066ff; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,102,255,0.3); padding: 6px; display: flex; flex-direction: column; gap: 6px; width: 40px; }
+        .zoom-btn { width: 32px; height: 32px; background: white; border: none; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 20px; color: #0066ff; cursor: pointer; transition: all 0.15s ease; }
+        .zoom-btn:hover { background-color: #f0f7ff; }
+        .zoom-btn:active { transform: scale(0.95); background-color: #e0efff; }
+        .zoom-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none !important; }
+
+        /* Легенда - большая подсказка */
+        .toggler { position: absolute; top: calc(50% + 55px); right: 20px; transform: translateX(0); z-index: 1000; }
+        .toggler__checkbox { display: none; }
+        .toggler__label { display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; font-weight: bold; font-size: 22px; cursor: pointer; border: none; border-radius: 8px; background: linear-gradient(135deg, #0066ff, #0052cc); color: white; user-select: none; transition: all 0.15s ease; box-shadow: 0 4px 12px rgba(0,102,255,0.4); }
+        .toggler__label:hover { background: linear-gradient(135deg, #0052cc, #0040a0); }
+        .toggler__label:active { transform: scale(0.95); }
+        .toggler__content-box { position: absolute; bottom: 50px; right: 0; transform: translateX(0) translateY(10px); text-align: left; white-space: normal; display: flex; flex-direction: column; gap: 16px; min-width: 420px; max-width: 500px; max-height: 60vh; overflow-y: auto; padding: 28px 32px; font-size: 14px; line-height: 1.6; color: #333; background: linear-gradient(135deg, #ffffff, #f8fafc); border: 1px solid #e5e7eb; border-radius: 16px; box-shadow: 0 12px 48px rgba(0,0,0,0.2); opacity: 0; visibility: hidden; transition: all 0.25s ease; z-index: 11; pointer-events: none; }
+        .toggler__checkbox:checked ~ .toggler__content-box { opacity: 1; visibility: visible; transform: translateX(0) translateY(0); pointer-events: auto; }
+        .legend-title { font-size: 18px; font-weight: 800; color: #0066ff; margin-bottom: 8px; padding-bottom: 12px; border-bottom: 2px solid #e5e7eb; }
+        .legend-section { display: flex; flex-direction: column; gap: 12px; }
+        .legend-row { display: flex; align-items: flex-start; gap: 14px; padding: 12px 14px; background: #f8fafc; border-radius: 10px; border: 1px solid #e5e7eb; transition: all 0.15s ease; }
+        .legend-row:hover { background: #f0f7ff; border-color: #0066ff; transform: translateX(4px); }
+        .legend-icon { font-size: 26px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; background: white; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+        .legend-content { flex: 1; }
+        .legend-label { font-weight: 700; color: #1f2937; font-size: 14px; margin-bottom: 4px; }
+        .legend-desc { color: #6b7280; font-size: 13px; line-height: 1.5; }
+        .ozon-brand { color: #0066ff; font-weight: 900; font-size: 18px; margin-top: 16px; padding-top: 16px; border-top: 2px solid #e5e7eb; text-align: center; letter-spacing: 1px; }
+
+        /* Плашка индекса */
+        .index-panel { position: fixed; bottom: 60px; left: 20px; display: flex; align-items: center; gap: 12px; padding: 12px 18px; background: linear-gradient(135deg, #ffffff, #f8fafc); border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.12); z-index: 1000; min-width: 280px; transition: all 0.3s ease; }
+        .index-panel:hover { box-shadow: 0 6px 24px rgba(0,0,0,0.16); transform: translateY(-2px); }
+        .index-icon { width: 40px; height: 40px; background: linear-gradient(135deg, #4ade80, #22c55e); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+        .index-content { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+        .index-label { font-size: 11px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
+        .index-value { font-size: 14px; color: #1f2937; font-weight: 700; white-space: nowrap; }
+        .index-city { font-size: 11px; color: #0066ff; font-weight: 600; }
+        .index-status { width: 8px; height: 8px; border-radius: 50%; background-color: #4ade80; flex-shrink: 0; animation: pulse 2s infinite; }
+        .index-status.warning { background-color: #fbbf24; }
+        .index-status.error { background-color: #ef4444; }
+        @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.6; transform: scale(1.1); } }
+
+        /* Footer */
+        .footer-brand { position: fixed; bottom: 0; left: 0; width: 100%; height: 44px; background: linear-gradient(90deg, #0066ff, #0052cc); color: #ffffff; font-weight: 900; z-index: 1000; text-align: center; font-size: 20px; display: flex; align-items: center; justify-content: center; letter-spacing: 1px; }
+
+        /* Геолокатор */
+        .leaflet-control-geocoder { border-radius: 8px !important; box-shadow: 0 2px 8px rgba(0,0,0,0.15) !important; background: white !important; }
+        .leaflet-control-geocoder input { font-size: 14px !important; padding: 8px 12px !important; border-radius: 8px !important; border: 1px solid #ccc !important; }
+        .leaflet-control-geocoder input:focus { border-color: #007bff !important; outline: none; }
+
+        /* === МАРКЕРЫ - СИНИЕ И КРАСНЫЕ === */
+        .pvz-marker { 
+            border: 2px solid white; 
+            border-radius: 50%; 
+            width: 14px; 
+            height: 14px; 
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+            transition: all 0.2s;
+        }
+        .pvz-marker.open {
+            background: #0066ff;
+        }
+        .pvz-marker.profit {
+            background: #ef4444;
+        }
+        .pvz-marker:hover {
+            transform: scale(1.4);
+            z-index: 1000 !important;
+        }
+
+        /* Tooltip */
+        .tooltip-trigger { position: relative; cursor: help; }
+        .tooltip-trigger .tooltip-text { visibility: hidden; width: 220px; background-color: #1f2937; color: #fff; text-align: center; border-radius: 8px; padding: 10px 12px; position: absolute; z-index: 100; bottom: 100%; left: 50%; transform: translateX(-50%) translateY(8px); opacity: 0; transition: opacity 0.15s, transform 0.15s; font-size: 12px; line-height: 1.4; pointer-events: none; box-shadow: 0 6px 16px rgba(0,0,0,0.3); }
+        .tooltip-trigger .tooltip-text::after { content: ""; position: absolute; top: 100%; left: 50%; margin-left: -6px; border-width: 6px; border-style: solid; border-color: #1f2937 transparent transparent transparent; }
+        .tooltip-trigger:hover .tooltip-text { visibility: visible; opacity: 1; transform: translateX(-50%) translateY(0); }
+        .index-badge { display: block; margin-top: 8px; padding-top: 8px; border-top: 1px solid #374151; font-size: 11px; color: #9ca3af; }
+        .index-value-badge { color: #4ade80; font-weight: 700; }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    
+    <!-- Кнопки зума -->
+    <div class="abcde">
+        <div id="a">
+            <button id="zoomIn" class="zoom-btn" title="Приблизить">+</button>
+            <button id="zoomOut" class="zoom-btn" title="Отдалить">−</button>
+        </div>
+    </div>
+    
+    <!-- Легенда -->
+    <div class="toggler">  
+        <input type="checkbox" id="toggler__checkbox-id-1" class="toggler__checkbox">  
+        <label for="toggler__checkbox-id-1" class="toggler__label" title="Легенда">?</label>
+        <span class="toggler__content-box">
+            <div class="legend-title">📍 Условные обозначения</div>
+            <div class="legend-section">
+                <div class="legend-row">
+                    <span class="legend-icon" style="background:#0066ff;"></span>
+                    <div class="legend-content">
+                        <div class="legend-label">Открытый ПВЗ Ozon</div>
+                        <div class="legend-desc">Действующие пункты выдачи заказов. Здесь уже можно получить или отправить посылку.</div>
+                    </div>
+                </div>
+                <div class="legend-row">
+                    <span class="legend-icon tooltip-trigger" style="background:#ef4444;">
+                        <span class="tooltip-text">
+                            Присмотритесь к таким местам — здесь очень ждут ваш пункт выдачи
+                            <span class="index-badge">Индекс в зоне видимости: <span class="index-value-badge" id="pvzIndexTooltip">—</span></span>
+                        </span>
+                    </span>
+                    <div class="legend-content">
+                        <div class="legend-label">Привлекательная точка</div>
+                        <div class="legend-desc">Перспективные локации для открытия нового пункта выдачи. Высокий спрос, низкая конкуренция.</div>
+                    </div>
+                </div>
+            </div>
+            <div class="ozon-brand">ozon</div>
+        </span> 
+    </div>
+    
+    <!-- Плашка индекса -->
+    <div class="index-panel">
+        <div class="index-status" id="indexStatus"></div>
+        <div class="index-icon">📊</div>
+        <div class="index-content">
+            <span class="index-label">Индекс насыщенности</span>
+            <span class="index-value" id="pvzIndex">Загрузка...</span>
+            <span class="index-city" id="pvzCity">Определение города...</span>
+        </div>
+    </div>
+    
+    <div class="footer-brand">ozon map</div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', async function() {
+            const CENTER_COORDS = [55.7558, 37.6173];
+            const START_ZOOM = 5;
+            const MIN_ZOOM = 3;
+            const MAX_ZOOM = 18;
+
+            const myMap = L.map('map', {
+                center: CENTER_COORDS,
+                zoom: START_ZOOM,
+                minZoom: MIN_ZOOM,
+                maxZoom: MAX_ZOOM,
+                zoomControl: false,
+                attributionControl: true
+            });
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+                maxZoom: MAX_ZOOM
+            }).addTo(myMap);
+
+            // === ПОИСКОВИК (ГЕОКОДЕР) ===
+            L.Control.geocoder({
+                placeholder: 'Поиск города, адреса...',
+                errorMessage: 'Не найдено',
+                position: 'topleft',
+                defaultMarkGeocode: true,
+                geocoder: L.Control.Geocoder.nominatim({
+                    serviceUrl: 'https://nominatim.openstreetmap.org/',
+                    apiKey: ''
+                })
+            }).addTo(myMap);
+
+            // === БАЗА ДАННЫХ (ИЗ ВАШЕГО ФАЙЛА) ===
+            const CITY_DB = {
+                "москва": { "population": 13154700, "pvzCount": 847, "coords": [55.7558, 37.6173] },
+                "санктпетербург": { "population": 5601911, "pvzCount": 423, "coords": [59.9343, 30.3351] },
+                "екатеринбург": { "population": 1544376, "pvzCount": 156, "coords": [56.8389, 60.6057] },
+                "новосибирск": { "population": 1633595, "pvzCount": 167, "coords": [55.0084, 82.9357] },
+                "казань": { "population": 1308660, "pvzCount": 127, "coords": [55.7961, 49.1064] },
+                "нижнийновгород": { "population": 1252236, "pvzCount": 118, "coords": [56.2969, 43.9369] },
+                "челябинск": { "population": 1196680, "pvzCount": 107, "coords": [55.1644, 61.4368] },
+                "красноярск": { "population": 1187165, "pvzCount": 134, "coords": [56.0153, 92.8932] },
+                "самара": { "population": 1156644, "pvzCount": 108, "coords": [53.2001, 50.1500] },
+                "уфа": { "population": 1144809, "pvzCount": 114, "coords": [54.7388, 55.9721] },
+                "ростовнадону": { "population": 1137904, "pvzCount": 124, "coords": [47.2357, 39.7015] },
+                "омск": { "population": 1125695, "pvzCount": 98, "coords": [54.9885, 73.3242] },
+                "краснодар": { "population": 948827, "pvzCount": 112, "coords": [45.0355, 38.9753] },
+                "воронеж": { "population": 1058261, "pvzCount": 94, "coords": [51.6720, 39.1843] },
+                "пермь": { "population": 1055397, "pvzCount": 92, "coords": [58.0105, 56.2502] },
+                "волгоград": { "population": 1008998, "pvzCount": 89, "coords": [48.7080, 44.5133] },
+                "саратов": { "population": 901354, "pvzCount": 87, "coords": [51.5924, 46.0348] },
+                "тюмень": { "population": 847488, "pvzCount": 78, "coords": [57.1522, 65.5272] },
+                "тольятти": { "population": 684709, "pvzCount": 62, "coords": [53.5303, 49.3461] },
+                "ижевск": { "population": 630877, "pvzCount": 59, "coords": [56.8527, 53.2041] },
+                "ульяновск": { "population": 622019, "pvzCount": 58, "coords": [54.3142, 48.4031] },
+                "барнаул": { "population": 630877, "pvzCount": 54, "coords": [53.3606, 83.7636] },
+                "владивосток": { "population": 606589, "pvzCount": 52, "coords": [43.1056, 131.8735] },
+                "иркутск": { "population": 623562, "pvzCount": 56, "coords": [52.2978, 104.2964] },
+                "ярославль": { "population": 608353, "pvzCount": 56, "coords": [57.6261, 39.8845] },
+                "махачкала": { "population": 603518, "pvzCount": 52, "coords": [42.9849, 47.5047] },
+                "томск": { "population": 576624, "pvzCount": 53, "coords": [56.4977, 84.9744] },
+                "оренбург": { "population": 569073, "pvzCount": 51, "coords": [51.7727, 55.0988] },
+                "кемерово": { "population": 556382, "pvzCount": 48, "coords": [55.3331, 86.0831] },
+                "набережныечелны": { "population": 533907, "pvzCount": 41, "coords": [55.7256, 52.4069] },
+                "рязань": { "population": 539963, "pvzCount": 49, "coords": [54.6269, 39.6916] },
+                "астрахань": { "population": 529793, "pvzCount": 67, "coords": [46.3497, 48.0408] },
+                "пенза": { "population": 520300, "pvzCount": 47, "coords": [53.2001, 45.0000] },
+                "липецк": { "population": 508887, "pvzCount": 46, "coords": [52.6031, 39.5708] },
+                "киров": { "population": 507155, "pvzCount": 44, "coords": [58.6035, 49.6679] },
+                "чебоксары": { "population": 497252, "pvzCount": 45, "coords": [56.1322, 47.2519] },
+                "калининград": { "population": 489359, "pvzCount": 42, "coords": [54.7104, 20.4522] },
+                "тула": { "population": 475161, "pvzCount": 44, "coords": [54.1961, 37.6182] },
+                "курск": { "population": 450213, "pvzCount": 39, "coords": [51.7373, 36.1873] },
+                "уланудэ": { "population": 439128, "pvzCount": 39, "coords": [51.8272, 107.6064] },
+                "ставрополь": { "population": 433931, "pvzCount": 41, "coords": [45.0428, 41.9734] },
+                "магнитогорск": { "population": 430977, "pvzCount": 37, "coords": [53.4078, 58.9797] },
+                "тверь": { "population": 410210, "pvzCount": 38, "coords": [56.8587, 35.9176] },
+                "сургут": { "population": 408860, "pvzCount": 35, "coords": [61.2500, 73.4167] },
+                "нижнийтагил": { "population": 356044, "pvzCount": 31, "coords": [57.9197, 59.9650] },
+                "архангельск": { "population": 348783, "pvzCount": 91, "coords": [64.5401, 40.5433] },
+                "владимир": { "population": 349951, "pvzCount": 41, "coords": [56.1366, 40.3966] },
+                "калуга": { "population": 336726, "pvzCount": 31, "coords": [54.5293, 36.2754] },
+                "смоленск": { "population": 326863, "pvzCount": 30, "coords": [54.7818, 32.0401] },
+                "грозный": { "population": 324318, "pvzCount": 28, "coords": [43.3181, 45.6986] },
+                "саранск": { "population": 320450, "pvzCount": 28, "coords": [54.1838, 45.1749] },
+                "орел": { "population": 318550, "pvzCount": 29, "coords": [52.9651, 36.0785] },
+                "череповец": { "population": 315738, "pvzCount": 29, "coords": [59.1333, 37.9000] },
+                "мурманск": { "population": 295000, "pvzCount": 33, "coords": [68.9583, 33.0827] },
+                "тамбов": { "population": 290933, "pvzCount": 27, "coords": [52.7319, 41.4520] },
+                "петрозаводск": { "population": 278460, "pvzCount": 25, "coords": [61.7849, 34.3469] },
+                "кострома": { "population": 277680, "pvzCount": 24, "coords": [57.7665, 40.9264] },
+                "сыктывкар": { "population": 245313, "pvzCount": 23, "coords": [61.6681, 50.8358] },
+                "нальчик": { "population": 240203, "pvzCount": 22, "coords": [43.4981, 43.6189] },
+                "великийновгород": { "population": 231438, "pvzCount": 21, "coords": [58.5218, 31.2755] },
+                "псков": { "population": 210391, "pvzCount": 19, "coords": [57.8136, 28.3496] },
+                "абакан": { "population": 198870, "pvzCount": 122, "coords": [53.7157, 91.4292] },
+                "ангарск": { "population": 229592, "pvzCount": 71, "coords": [52.5406, 103.8886] },
+                "альметьевск": { "population": 158000, "pvzCount": 91, "coords": [54.9000, 52.3000] },
+                "анапа": { "population": 91000, "pvzCount": 177, "coords": [44.8939, 37.3156] },
+                "армавир": { "population": 188832, "pvzCount": 127, "coords": [44.9833, 41.1167] },
+                "аксай": { "population": 45000, "pvzCount": 64, "coords": [47.3167, 39.8833] },
+                "азов": { "population": 82000, "pvzCount": 58, "coords": [47.1167, 39.4167] },
+                "арзамас": { "population": 104000, "pvzCount": 69, "coords": [55.3500, 43.8500] },
+                "алапаевск": { "population": 36000, "pvzCount": 30, "coords": [57.8500, 61.6667] },
+                "алатырь": { "population": 36000, "pvzCount": 20, "coords": [54.8500, 46.6000] },
+                "александров": { "population": 58000, "pvzCount": 41, "coords": [56.4000, 38.7167] },
+                "апатиты": { "population": 54000, "pvzCount": 34, "coords": [67.5667, 33.4000] },
+                "арсеньев": { "population": 53000, "pvzCount": 23, "coords": [44.1667, 133.2667] },
+                "артем": { "population": 102000, "pvzCount": 41, "coords": [43.3500, 132.2000] },
+                "абинск": { "population": 38600, "pvzCount": 28, "coords": [44.8667, 38.1667] },
+                "агрыз": { "population": 19000, "pvzCount": 8, "coords": [56.5167, 52.8000] },
+                "адлер": { "population": 70000, "pvzCount": 35, "coords": [43.4000, 39.9333] },
+                "апшеронск": { "population": 31000, "pvzCount": 29, "coords": [44.4667, 39.7000] },
+                "ардон": { "population": 17000, "pvzCount": 5, "coords": [43.1833, 44.2833] },
+                "алагир": { "population": 20000, "pvzCount": 7, "coords": [43.0333, 44.2000] },
+                "аргун": { "population": 35000, "pvzCount": 8, "coords": [43.2833, 45.8667] },
+                "арти": { "population": 10000, "pvzCount": 5, "coords": [56.4167, 58.6167] },
+                "асино": { "population": 24000, "pvzCount": 5, "coords": [57.0000, 86.1667] },
+                "ахтубинск": { "population": 38000, "pvzCount": 22, "coords": [48.2833, 46.1667] },
+                "ачинск": { "population": 107000, "pvzCount": 45, "coords": [56.2667, 90.5000] },
+                "балашиха": { "population": 507366, "pvzCount": 45, "coords": [55.7964, 37.9378] },
+                "балаково": { "population": 181949, "pvzCount": 18, "coords": [52.0264, 47.8036] },
+                "балашов": { "population": 74760, "pvzCount": 9, "coords": [51.5333, 43.1667] },
+                "белгород": { "population": 504319, "pvzCount": 43, "coords": [50.5978, 36.5871] },
+                "бердск": { "population": 102000, "pvzCount": 12, "coords": [54.7583, 83.1167] },
+                "белорецк": { "population": 68000, "pvzCount": 11, "coords": [53.9833, 58.4000] },
+                "белово": { "population": 70000, "pvzCount": 10, "coords": [54.4167, 86.3000] },
+                "березники": { "population": 138000, "pvzCount": 18, "coords": [59.4083, 56.8167] },
+                "братск": { "population": 233000, "pvzCount": 23, "coords": [56.1333, 101.6167] },
+                "буй": { "population": 25000, "pvzCount": 4, "coords": [58.4667, 41.5333] },
+                "бузулук": { "population": 85000, "pvzCount": 12, "coords": [52.7833, 52.2667] },
+                "великиелуки": { "population": 92000, "pvzCount": 11, "coords": [56.3333, 30.5500] },
+                "верхняяпышма": { "population": 70000, "pvzCount": 9, "coords": [56.9833, 60.5833] },
+                "видное": { "population": 70000, "pvzCount": 8, "coords": [55.5500, 37.7000] },
+                "воткинск": { "population": 98000, "pvzCount": 11, "coords": [57.0500, 53.9833] },
+                "всеволожск": { "population": 70000, "pvzCount": 8, "coords": [60.0333, 30.6500] },
+                "выборг": { "population": 80000, "pvzCount": 9, "coords": [60.7167, 28.7500] },
+                "выкса": { "population": 55000, "pvzCount": 7, "coords": [55.3167, 42.1667] },
+                "гагарин": { "population": 27000, "pvzCount": 4, "coords": [55.5500, 34.9833] },
+                "гатчина": { "population": 96000, "pvzCount": 11, "coords": [59.5667, 30.1333] },
+                "губкин": { "population": 87000, "pvzCount": 10, "coords": [51.2833, 37.5333] },
+                "гусьхрустальный": { "population": 55000, "pvzCount": 7, "coords": [55.6167, 40.6500] },
+                "дмитров": { "population": 61000, "pvzCount": 8, "coords": [56.3500, 37.5167] },
+                "дубна": { "population": 77000, "pvzCount": 9, "coords": [56.7333, 37.2500] },
+                "егорьевск": { "population": 70000, "pvzCount": 8, "coords": [55.3833, 39.0333] },
+                "елец": { "population": 107000, "pvzCount": 13, "coords": [52.6167, 38.5000] },
+                "железногорск": { "population": 95000, "pvzCount": 11, "coords": [52.3500, 35.3667] },
+                "жуковский": { "population": 107000, "pvzCount": 12, "coords": [55.6000, 38.1167] },
+                "зеленоград": { "population": 250000, "pvzCount": 23, "coords": [55.9833, 37.1833] },
+                "зеленодольск": { "population": 100000, "pvzCount": 12, "coords": [55.8500, 48.5167] },
+                "ивантеевка": { "population": 72000, "pvzCount": 8, "coords": [55.9667, 37.9167] },
+                "истрим": { "population": 33000, "pvzCount": 5, "coords": [55.9167, 36.8667] },
+                "камышин": { "population": 119000, "pvzCount": 14, "coords": [50.0833, 45.4167] },
+                "канаш": { "population": 45000, "pvzCount": 6, "coords": [55.5167, 47.5000] },
+                "канск": { "population": 90000, "pvzCount": 11, "coords": [56.2000, 95.7167] },
+                "кашира": { "population": 42000, "pvzCount": 5, "coords": [54.8333, 38.1500] },
+                "керчь": { "population": 150000, "pvzCount": 18, "coords": [45.3500, 36.4667] },
+                "клин": { "population": 78000, "pvzCount": 9, "coords": [56.3333, 36.7333] },
+                "клинцы": { "population": 63000, "pvzCount": 8, "coords": [52.7500, 32.2500] },
+                "ковров": { "population": 140000, "pvzCount": 16, "coords": [56.3500, 41.3167] },
+                "когалым": { "population": 68000, "pvzCount": 8, "coords": [62.2667, 74.4833] },
+                "коломна": { "population": 144589, "pvzCount": 16, "coords": [55.0794, 38.7783] },
+                "кольчугино": { "population": 43000, "pvzCount": 6, "coords": [56.3000, 39.4000] },
+                "комсомольскнаамуре": { "population": 240000, "pvzCount": 28, "coords": [50.5497, 137.0069] },
+                "королев": { "population": 225397, "pvzCount": 25, "coords": [55.9167, 37.8333] },
+                "костомукша": { "population": 28000, "pvzCount": 4, "coords": [64.5833, 30.5667] },
+                "красногорск": { "population": 179000, "pvzCount": 20, "coords": [55.8206, 37.3306] },
+                "краснотурьинск": { "population": 58000, "pvzCount": 7, "coords": [59.7667, 60.2000] },
+                "красноуфимск": { "population": 40000, "pvzCount": 6, "coords": [56.6167, 57.7667] },
+                "кронштадт": { "population": 44000, "pvzCount": 5, "coords": [59.9833, 29.7667] },
+                "кстово": { "population": 67000, "pvzCount": 8, "coords": [56.1333, 44.2000] },
+                "кузнецк": { "population": 85000, "pvzCount": 10, "coords": [53.1167, 46.6000] },
+                "куйбышев": { "population": 45000, "pvzCount": 6, "coords": [55.4333, 78.3167] },
+                "кумертау": { "population": 62000, "pvzCount": 8, "coords": [52.7667, 55.8000] },
+                "кунгур": { "population": 66000, "pvzCount": 8, "coords": [57.4333, 56.9500] },
+                "кызыл": { "population": 120000, "pvzCount": 14, "coords": [51.7167, 94.4500] },
+                "лабинск": { "population": 61000, "pvzCount": 9, "coords": [44.6333, 40.7167] },
+                "лениногорск": { "population": 64000, "pvzCount": 8, "coords": [54.6000, 52.4500] },
+                "ленинсккузнецкий": { "population": 100000, "pvzCount": 12, "coords": [54.6667, 86.1667] },
+                "лесосибирск": { "population": 61000, "pvzCount": 8, "coords": [58.2333, 92.4833] },
+                "ликинодулево": { "population": 30000, "pvzCount": 5, "coords": [55.7167, 38.9667] },
+                "лиски": { "population": 55000, "pvzCount": 8, "coords": [50.9833, 39.5333] },
+                "лобня": { "population": 83000, "pvzCount": 10, "coords": [56.0167, 37.4667] },
+                "лосинопетровский": { "population": 26000, "pvzCount": 4, "coords": [55.8667, 38.2167] },
+                "луза": { "population": 10000, "pvzCount": 2, "coords": [60.7500, 47.2500] },
+                "лысьва": { "population": 65000, "pvzCount": 8, "coords": [58.1000, 57.8000] },
+                "лыткарино": { "population": 57000, "pvzCount": 7, "coords": [55.6000, 37.9000] },
+                "льгов": { "population": 19000, "pvzCount": 3, "coords": [51.6667, 35.2500] },
+                "любим": { "population": 5000, "pvzCount": 1, "coords": [58.3667, 40.7000] },
+                "люберцы": { "population": 201654, "pvzCount": 22, "coords": [55.6775, 37.8936] },
+                "магадан": { "population": 96000, "pvzCount": 11, "coords": [59.5667, 150.8000] },
+                "майкоп": { "population": 142000, "pvzCount": 17, "coords": [44.6000, 40.1000] },
+                "макаров": { "population": 7000, "pvzCount": 2, "coords": [48.6000, 142.7667] },
+                "макушино": { "population": 8000, "pvzCount": 2, "coords": [55.2500, 66.2833] },
+                "малаявишера": { "population": 38000, "pvzCount": 5, "coords": [58.8333, 33.4667] },
+                "малгобек": { "population": 32000, "pvzCount": 4, "coords": [43.5000, 44.6500] },
+                "малоярославец": { "population": 30000, "pvzCount": 4, "coords": [54.9667, 36.4667] },
+                "маркс": { "population": 31000, "pvzCount": 4, "coords": [51.7000, 46.7500] },
+                "мегион": { "population": 48000, "pvzCount": 6, "coords": [61.0333, 76.1000] },
+                "медногорск": { "population": 27000, "pvzCount": 4, "coords": [51.4167, 57.6000] },
+                "междуреченск": { "population": 100000, "pvzCount": 12, "coords": [53.6833, 88.0667] },
+                "мелеуз": { "population": 62000, "pvzCount": 8, "coords": [52.9500, 55.9333] },
+                "миасс": { "population": 151000, "pvzCount": 17, "coords": [55.0333, 60.1167] },
+                "минеральныеводы": { "population": 76000, "pvzCount": 9, "coords": [44.2167, 43.1333] },
+                "минусинск": { "population": 72000, "pvzCount": 9, "coords": [53.7000, 91.6833] },
+                "михайловка": { "population": 59000, "pvzCount": 7, "coords": [50.0667, 43.2333] },
+                "мичуринск": { "population": 98000, "pvzCount": 12, "coords": [52.9000, 40.5500] },
+                "можга": { "population": 49000, "pvzCount": 6, "coords": [56.4500, 52.2167] },
+                "можайск": { "population": 31000, "pvzCount": 4, "coords": [55.5000, 36.0333] },
+                "мончегорск": { "population": 45000, "pvzCount": 6, "coords": [67.9333, 32.9500] },
+                "морозовск": { "population": 27000, "pvzCount": 4, "coords": [48.3667, 41.8000] },
+                "моршанск": { "population": 40000, "pvzCount": 5, "coords": [53.4500, 41.8167] },
+                "муром": { "population": 106000, "pvzCount": 13, "coords": [55.5667, 42.0500] },
+                "мытищи": { "population": 222305, "pvzCount": 25, "coords": [55.9116, 37.7307] },
+                "надым": { "population": 46000, "pvzCount": 6, "coords": [65.5333, 72.5000] },
+                "назрань": { "population": 125000, "pvzCount": 15, "coords": [43.2167, 44.7667] },
+                "нальчик": { "population": 240203, "pvzCount": 28, "coords": [43.4981, 43.6189] },
+                "нарфоминск": { "population": 72000, "pvzCount": 9, "coords": [55.3833, 36.7333] },
+                "находка": { "population": 140000, "pvzCount": 16, "coords": [42.8167, 132.8833] },
+                "невинномысск": { "population": 118000, "pvzCount": 14, "coords": [44.6333, 41.9333] },
+                "нефтекамск": { "population": 133000, "pvzCount": 16, "coords": [56.0833, 54.2667] },
+                "нефтеюганск": { "population": 127000, "pvzCount": 15, "coords": [61.0667, 72.6000] },
+                "нижневартовск": { "population": 280000, "pvzCount": 32, "coords": [60.9333, 76.5500] },
+                "нижнекамск": { "population": 240000, "pvzCount": 28, "coords": [55.6333, 51.8167] },
+                "новомосковск": { "population": 126000, "pvzCount": 15, "coords": [54.0167, 38.3000] },
+                "новороссийск": { "population": 261000, "pvzCount": 31, "coords": [44.7231, 37.7681] },
+                "новотроицк": { "population": 86000, "pvzCount": 10, "coords": [51.2000, 58.3167] },
+                "новокузнецк": { "population": 547000, "pvzCount": 63, "coords": [53.7500, 87.1167] },
+                "новокуйбышевск": { "population": 104000, "pvzCount": 12, "coords": [53.1000, 49.8667] },
+                "новоуральск": { "population": 82000, "pvzCount": 10, "coords": [57.2500, 60.0833] },
+                "новошахтинск": { "population": 107000, "pvzCount": 13, "coords": [47.7500, 39.9333] },
+                "ноябрьск": { "population": 110000, "pvzCount": 13, "coords": [63.2000, 75.4500] },
+                "обнинск": { "population": 120000, "pvzCount": 14, "coords": [55.0833, 36.6167] },
+                "одинцово": { "population": 143416, "pvzCount": 16, "coords": [55.6758, 37.2808] },
+                "октябрьский": { "population": 115000, "pvzCount": 14, "coords": [54.4833, 53.4667] },
+                "ореховозуево": { "population": 120670, "pvzCount": 14, "coords": [55.8067, 38.9617] },
+                "орск": { "population": 230000, "pvzCount": 27, "coords": [51.2000, 58.5667] },
+                "осколь": { "population": 220000, "pvzCount": 26, "coords": [51.2833, 37.8333] },
+                "павлово": { "population": 60000, "pvzCount": 8, "coords": [55.9833, 43.1000] },
+                "павловскийпосад": { "population": 63000, "pvzCount": 8, "coords": [55.7833, 38.6500] },
+                "первоуральск": { "population": 123000, "pvzCount": 15, "coords": [56.9000, 59.9500] },
+                "переславльзалесский": { "population": 38000, "pvzCount": 6, "coords": [56.7333, 38.8500] },
+                "подольск": { "population": 318061, "pvzCount": 36, "coords": [55.4297, 37.5447] },
+                "прокопьевск": { "population": 196000, "pvzCount": 23, "coords": [53.9058, 86.7194] },
+                "пущино": { "population": 21000, "pvzCount": 3, "coords": [54.8333, 37.6167] },
+                "пушкино": { "population": 110000, "pvzCount": 13, "coords": [56.0167, 37.8500] },
+                "пятигорск": { "population": 146000, "pvzCount": 17, "coords": [44.0500, 43.0167] },
+                "раменское": { "population": 120000, "pvzCount": 14, "coords": [55.5667, 38.2333] },
+                "ревда": { "population": 62000, "pvzCount": 8, "coords": [56.8000, 59.9167] },
+                "реутов": { "population": 107000, "pvzCount": 12, "coords": [55.7597, 37.8597] },
+                "рославль": { "population": 50000, "pvzCount": 7, "coords": [53.9500, 32.8500] },
+                "россошь": { "population": 63000, "pvzCount": 8, "coords": [50.2000, 39.5833] },
+                "ростов": { "population": 58000, "pvzCount": 8, "coords": [57.1833, 39.4000] },
+                "рубка": { "population": 55000, "pvzCount": 7, "coords": [55.4333, 37.8167] },
+                "рыбинск": { "population": 188778, "pvzCount": 22, "coords": [58.0446, 38.8583] },
+                "рязань": { "population": 539963, "pvzCount": 62, "coords": [54.6269, 39.6916] },
+                "салават": { "population": 153000, "pvzCount": 18, "coords": [53.3500, 55.9333] },
+                "салехард": { "population": 51000, "pvzCount": 7, "coords": [66.5333, 66.6000] },
+                "самара": { "population": 1156644, "pvzCount": 132, "coords": [53.2001, 50.1500] },
+                "санктпетербург": { "population": 5601911, "pvzCount": 423, "coords": [59.9343, 30.3351] },
+                "саранск": { "population": 320450, "pvzCount": 38, "coords": [54.1838, 45.1749] },
+                "саратов": { "population": 901354, "pvzCount": 104, "coords": [51.5924, 46.0348] },
+                "саров": { "population": 96000, "pvzCount": 11, "coords": [54.9333, 43.3333] },
+                "севастополь": { "population": 509992, "pvzCount": 60, "coords": [44.6167, 33.5254] },
+                "северодвинск": { "population": 183000, "pvzCount": 22, "coords": [64.5667, 39.8333] },
+                "северск": { "population": 108000, "pvzCount": 13, "coords": [56.6000, 84.8833] },
+                "сергиевпосад": { "population": 103800, "pvzCount": 12, "coords": [56.3000, 38.1333] },
+                "серов": { "population": 99000, "pvzCount": 12, "coords": [59.6000, 60.5667] },
+                "серпухов": { "population": 126522, "pvzCount": 15, "coords": [54.9158, 37.4111] },
+                "симферополь": { "population": 340000, "pvzCount": 40, "coords": [44.9500, 34.1000] },
+                "сковородино": { "population": 9000, "pvzCount": 2, "coords": [53.9833, 123.9167] },
+                "слободской": { "population": 32000, "pvzCount": 5, "coords": [58.4500, 50.1667] },
+                "смидович": { "population": 11000, "pvzCount": 2, "coords": [48.7167, 131.8833] },
+                "соликамск": { "population": 94000, "pvzCount": 11, "coords": [59.6333, 56.7667] },
+                "сольцы": { "population": 9000, "pvzCount": 2, "coords": [58.1333, 30.3000] },
+                "сортавала": { "population": 18000, "pvzCount": 3, "coords": [61.7000, 30.6833] },
+                "соч": { "population": 443562, "pvzCount": 52, "coords": [43.6028, 39.7342] },
+                "спасскдальний": { "population": 41000, "pvzCount": 6, "coords": [44.5833, 132.8167] },
+                "среднеуральск": { "population": 23000, "pvzCount": 4, "coords": [57.0167, 60.4667] },
+                "стаханов": { "population": 73000, "pvzCount": 9, "coords": [48.5667, 38.6500] },
+                "старыйоскол": { "population": 220000, "pvzCount": 26, "coords": [51.2833, 37.8333] },
+                "стерлитамак": { "population": 280000, "pvzCount": 33, "coords": [53.6333, 55.9500] },
+                "стрежевой": { "population": 41000, "pvzCount": 6, "coords": [60.7333, 77.6000] },
+                "ступино": { "population": 65000, "pvzCount": 8, "coords": [54.9000, 38.0833] },
+                "сысерть": { "population": 20000, "pvzCount": 3, "coords": [56.5167, 60.8167] },
+                "сыктывкар": { "population": 245313, "pvzCount": 29, "coords": [61.6681, 50.8358] },
+                "таганрог": { "population": 245120, "pvzCount": 29, "coords": [47.2362, 38.9323] },
+                "тайга": { "population": 23000, "pvzCount": 4, "coords": [56.0833, 85.6333] },
+                "талдом": { "population": 13000, "pvzCount": 2, "coords": [56.7333, 37.5333] },
+                "темрюк": { "population": 41000, "pvzCount": 6, "coords": [45.2667, 37.3833] },
+                "тихорецк": { "population": 58000, "pvzCount": 8, "coords": [45.8500, 40.1167] },
+                "тихвин": { "population": 57000, "pvzCount": 7, "coords": [59.6500, 33.5167] },
+                "тобольт": { "population": 103000, "pvzCount": 12, "coords": [58.2000, 68.2500] },
+                "тольятти": { "population": 684709, "pvzCount": 79, "coords": [53.5303, 49.3461] },
+                "томмот": { "population": 7000, "pvzCount": 2, "coords": [58.9667, 126.2833] },
+                "торжок": { "population": 46000, "pvzCount": 6, "coords": [57.0333, 34.9667] },
+                "тосно": { "population": 38000, "pvzCount": 5, "coords": [59.5333, 30.8833] },
+                "трехгорный": { "population": 32000, "pvzCount": 5, "coords": [54.7167, 58.4167] },
+                "троицк": { "population": 43000, "pvzCount": 6, "coords": [55.9000, 37.3833] },
+                "тула": { "population": 475161, "pvzCount": 56, "coords": [54.1961, 37.6182] },
+                "тутаев": { "population": 40000, "pvzCount": 6, "coords": [57.8833, 39.5333] },
+                "тында": { "population": 34000, "pvzCount": 5, "coords": [55.1500, 124.7167] },
+                "тюмень": { "population": 847488, "pvzCount": 98, "coords": [57.1522, 65.5272] },
+                "уварово": { "population": 25000, "pvzCount": 4, "coords": [52.0000, 41.9333] },
+                "удомля": { "population": 30000, "pvzCount": 4, "coords": [57.8833, 35.0167] },
+                "ужур": { "population": 15000, "pvzCount": 3, "coords": [55.3000, 89.8167] },
+                "узловая": { "population": 54000, "pvzCount": 7, "coords": [53.9833, 38.1833] },
+                "уланудэ": { "population": 439128, "pvzCount": 52, "coords": [51.8272, 107.6064] },
+                "ульяновск": { "population": 622019, "pvzCount": 73, "coords": [54.3142, 48.4031] },
+                "усинск": { "population": 40000, "pvzCount": 6, "coords": [66.0333, 57.5333] },
+                "усольесибирское": { "population": 77000, "pvzCount": 9, "coords": [52.8167, 103.6500] },
+                "уссрийск": { "population": 158000, "pvzCount": 19, "coords": [43.8000, 131.9500] },
+                "устьилимск": { "population": 83000, "pvzCount": 10, "coords": [58.0000, 102.6667] },
+                "устькут": { "population": 43000, "pvzCount": 6, "coords": [56.7833, 105.7667] },
+                "устьлабинск": { "population": 62000, "pvzCount": 9, "coords": [45.2167, 39.7500] },
+                "уфа": { "population": 1144809, "pvzCount": 135, "coords": [54.7388, 55.9721] },
+                "учалы": { "population": 37000, "pvzCount": 5, "coords": [54.3167, 59.4000] },
+                "фрязино": { "population": 57000, "pvzCount": 7, "coords": [55.9667, 38.0500] },
+                "хабаровск": { "population": 616000, "pvzCount": 72, "coords": [48.4833, 135.0833] },
+                "хантымансийск": { "population": 103000, "pvzCount": 12, "coords": [61.0000, 69.0000] },
+                "химки": { "population": 259550, "pvzCount": 30, "coords": [55.8970, 37.4297] },
+                "хотьково": { "population": 22000, "pvzCount": 3, "coords": [56.2667, 37.9833] },
+                "цаганаман": { "population": 5000, "pvzCount": 1, "coords": [46.4167, 47.5000] },
+                "цементный": { "population": 12000, "pvzCount": 2, "coords": [45.1667, 39.0833] },
+                "циолковский": { "population": 6000, "pvzCount": 1, "coords": [51.7667, 128.2000] },
+                "чайковский": { "population": 82000, "pvzCount": 10, "coords": [56.7667, 54.1167] },
+                "чапаевск": { "population": 72000, "pvzCount": 9, "coords": [52.9833, 49.7167] },
+                "чебаркуль": { "population": 42000, "pvzCount": 6, "coords": [54.9833, 60.3667] },
+                "чебоксары": { "population": 497252, "pvzCount": 58, "coords": [56.1322, 47.2519] },
+                "чегем": { "population": 18000, "pvzCount": 3, "coords": [43.5333, 43.6167] },
+                "челябинск": { "population": 1196680, "pvzCount": 140, "coords": [55.1644, 61.4368] },
+                "черемхово": { "population": 51000, "pvzCount": 7, "coords": [53.1500, 103.0833] },
+                "череповец": { "population": 315738, "pvzCount": 37, "coords": [59.1333, 37.9000] },
+                "черкесск": { "population": 129000, "pvzCount": 15, "coords": [44.2167, 42.0500] },
+                "черноголовка": { "population": 21000, "pvzCount": 3, "coords": [56.0167, 38.3833] },
+                "черногорск": { "population": 72000, "pvzCount": 9, "coords": [53.8167, 91.3833] },
+                "чистополь": { "population": 60000, "pvzCount": 8, "coords": [55.3667, 50.6333] },
+                "чита": { "population": 349000, "pvzCount": 41, "coords": [52.0333, 113.5000] },
+                "чусовой": { "population": 44000, "pvzCount": 6, "coords": [58.3000, 57.8167] },
+                "шадринск": { "population": 75000, "pvzCount": 9, "coords": [56.0833, 63.6333] },
+                "шали": { "population": 50000, "pvzCount": 7, "coords": [43.1333, 45.9000] },
+                "шарыпово": { "population": 37000, "pvzCount": 5, "coords": [55.5667, 89.1667] },
+                "шахты": { "population": 221812, "pvzCount": 26, "coords": [47.7089, 40.2147] },
+                "шелково": { "population": 135189, "pvzCount": 16, "coords": [55.9181, 38.0369] },
+                "шебекино": { "population": 43000, "pvzCount": 6, "coords": [50.6500, 36.9000] },
+                "шиес": { "population": 3000, "pvzCount": 1, "coords": [64.1667, 41.0833] },
+                "шумерля": { "population": 30000, "pvzCount": 4, "coords": [55.5000, 46.4000] },
+                "шумиха": { "population": 17000, "pvzCount": 3, "coords": [55.1667, 63.2833] },
+                "щукино": { "population": 8000, "pvzCount": 2, "coords": [55.9167, 37.3833] },
+                "электросталь": { "population": 158652, "pvzCount": 18, "coords": [55.7894, 38.4469] },
+                "электроугли": { "population": 21000, "pvzCount": 3, "coords": [55.7333, 38.1667] },
+                "элиста": { "population": 104000, "pvzCount": 12, "coords": [46.3000, 44.2667] },
+                "энгельс": { "population": 202000, "pvzCount": 24, "coords": [51.4833, 46.1167] },
+                "югорск": { "population": 38000, "pvzCount": 5, "coords": [61.3167, 63.3333] },
+                "южносахалинск": { "population": 201648, "pvzCount": 24, "coords": [46.9588, 142.7386] },
+                "юрга": { "population": 80000, "pvzCount": 10, "coords": [55.6833, 84.8833] },
+                "южноуральск": { "population": 38000, "pvzCount": 5, "coords": [54.4667, 61.2500] },
+                "юрья": { "population": 11000, "pvzCount": 2, "coords": [59.0167, 49.6333] },
+                "юхнов": { "population": 6000, "pvzCount": 1, "coords": [54.7333, 35.2333] },
+                "южнокурильск": { "population": 7000, "pvzCount": 1, "coords": [44.0333, 145.7667] },
+                "юрьевец": { "population": 9000, "pvzCount": 2, "coords": [57.3167, 43.1167] },
+                "юрьевпольский": { "population": 5000, "pvzCount": 1, "coords": [55.7833, 38.6167] },
+                "юхнов": { "population": 6000, "pvzCount": 1, "coords": [54.7333, 35.2333] },
+                "южнокурильск": { "population": 7000, "pvzCount": 1, "coords": [44.0333, 145.7667] },
+                "юрьевец": { "population": 9000, "pvzCount": 2, "coords": [57.3167, 43.1167] },
+                "юрьевпольский": { "population": 5000, "pvzCount": 1, "coords": [55.7833, 38.6167] },
+                "юхнов": { "population": 6000, "pvzCount": 1, "coords": [54.7333, 35.2333] },
+                "южнокурильск": { "population": 7000, "pvzCount": 1, "coords": [44.0333, 145.7667] },
+                "юрьевец": { "population": 9000, "pvzCount": 2, "coords": [57.3167, 43.1167] },
+                "юрьевпольский": { "population": 5000, "pvzCount": 1, "coords": [55.7833, 38.6167] }
+            };
+
+            // Алиасы для надёжного поиска
+            const ALIASES = {
+                'москва':'москва','mow':'москва','мск':'москва',
+                'санктпетербург':'санктпетербург','спб':'санктпетербург','питер':'санктпетербург','ленград':'санктпетербург',
+                'казань':'казань','kzn':'казань',
+                'екатеринбург':'екатеринбург','екб':'екатеринбург','свердловск':'екатеринбург',
+                'нижнийновгород':'нижнийновгород','нижний':'нижнийновгород','новгород':'нижнийновгород',
+                'ростовнадону':'ростовнадону','ростов':'ростовнадону',
+                'набережныечелны':'набережныечелны','челны':'набережныечелны',
+                'уланудэ':'уланудэ','улан-удэ':'уланудэ',
+                'великийновгород':'великийновгород','новгородвеликий':'великийновгород'
+            };
+
+            let pvzMarkers = [];
+
+            // === СОЗДАЁМ МАРКЕРЫ (СИНИЕ + КРАСНЫЕ) ===
+            function addMarkersFromDB() {
+                console.log('Создание маркеров для', Object.keys(CITY_DB).length, 'городов');
+                
+                for (const [cityKey, cityData] of Object.entries(CITY_DB)) {
+                    const [lat, lng] = cityData.coords;
+                    // Создаём несколько маркеров для каждого города (пропорционально pvzCount)
+                    const markerCount = Math.min(cityData.pvzCount, 20); // лимит для производительности
+                    
+                    for (let i = 0; i < markerCount; i++) {
+                        // Небольшой разброс координат для визуализации плотности
+                        const offsetLat = (Math.random() - 0.5) * 0.02;
+                        const offsetLng = (Math.random() - 0.5) * 0.02;
+                        
+                        // 80% - синие (открытые), 20% - красные (привлекательные)
+                        const type = i < cityData.pvzCount * 0.8 ? 'open' : 'profit';
+                        
+                        // Создаём видимый маркер с нужным цветом
+                        const icon = L.divIcon({
+                            className: `pvz-marker ${type}`,
+                            html: '',
+                            iconSize: [14, 14],
+                            iconAnchor: [7, 7]
+                        });
+                        
+                        const marker = L.marker([lat + offsetLat, lng + offsetLng], { icon }).addTo(myMap);
+                        marker.city = cityKey;
+                        marker.type = type;
+                        
+                        // Добавляем всплывающую подсказку
+                        const tooltipText = type === 'open' 
+                            ? `${cityKey} (ПВЗ)` 
+                            : `${cityKey} (Перспектива)`;
+                        
+                        marker.bindTooltip(tooltipText, {
+                            permanent: false, 
+                            direction: 'top',
+                            offset: [0, -10]
+                        });
+                        
+                        pvzMarkers.push(marker);
+                    }
+                }
+                
+                console.log('✅ Создано маркеров:', pvzMarkers.length);
+            }
+
+            // Нормализация названия города
+            function norm(str) {
+                return (str || '').toLowerCase().replace(/[^a-zа-яё0-9]/g, '');
+            }
+
+            // Поиск города в БД
+            function lookupCity(raw) {
+                const n = norm(raw);
+                if (CITY_DB[n]) return n;
+                if (ALIASES[n] && CITY_DB[ALIASES[n]]) return ALIASES[n];
+                for (let key of Object.keys(CITY_DB)) {
+                    if (n.includes(key) || key.includes(n)) return key;
+                }
+                return null;
+            }
+
+            // Определение города по координатам
+            async function detectCity() {
+                const c = myMap.getCenter();
+                const z = myMap.getZoom();
+                if (z < 6) return null;
+                try {
+                    const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${c.lat}&lon=${c.lng}&zoom=10&addressdetails=1&accept-language=ru`);
+                    if (!r.ok) return null;
+                    const d = await r.json();
+                    const a = d.address || {};
+                    for (let field of ['city','town','village','state_district']) {
+                        if (a[field]) {
+                            const found = lookupCity(a[field]);
+                            if (found) return found;
+                        }
+                    }
+                } catch(e) { console.warn('Geo error:', e); }
+                return null;
+            }
+
+            // Подсчёт маркеров в видимой области
+            function countInViewport() {
+                const b = myMap.getBounds();
+                return pvzMarkers.filter(m => b.contains(m.getLatLng())).length;
+            }
+
+            // Обновление индекса
+            async function updateIndex() {
+                const el = document.getElementById('pvzIndex');
+                const tooltipEl = document.getElementById('pvzIndexTooltip');
+                const cityEl = document.getElementById('pvzCity');
+                const statusEl = document.getElementById('indexStatus');
+                
+                const city = await detectCity();
+                const count = countInViewport();
+                const cityData = city ? CITY_DB[city] : null;
+                
+                let indexText = '—';
+                let indexColor = '#9ca3af';
+                
+                if (city && cityData && cityData.population && count > 0) {
+                    const idx = Math.round(cityData.population / count);
+                    indexText = `1 ПВЗ на ${idx.toLocaleString('ru')} человек`;
+                    indexColor = '#059669';
+                } else if (count === 0) {
+                    indexText = 'Нет данных в зоне';
+                    indexColor = '#d97706';
+                } else if (!city) {
+                    indexText = 'Масштабируйте карту';
+                    indexColor = '#6b7280';
+                }
+                
+                el.textContent = indexText;
+                el.style.color = indexColor;
+                tooltipEl.textContent = indexText;
+                
+                if (city && cityData) {
+                    cityEl.textContent = `📍 ${city.charAt(0).toUpperCase() + city.slice(1)} • ${cityData.pvzCount} ПВЗ в базе`;
+                    statusEl.className = 'index-status';
+                } else if (count === 0) {
+                    cityEl.textContent = city ? `📍 ${city.charAt(0).toUpperCase() + city.slice(1)}` : 'Определение...';
+                    statusEl.className = 'index-status warning';
+                } else {
+                    cityEl.textContent = 'Определение города...';
+                    statusEl.className = 'index-status error';
+                }
+            }
+
+            // Обновление при движении карты
+            let tId;
+            myMap.on('moveend zoomend', () => {
+                clearTimeout(tId);
+                tId = setTimeout(updateIndex, 300);
+            });
+
+            // Кнопки зума
+            document.getElementById('zoomIn').onclick = () => {
+                const z = myMap.getZoom();
+                if (z < MAX_ZOOM) myMap.setZoom(z + 1);
+            };
+            document.getElementById('zoomOut').onclick = () => {
+                const z = myMap.getZoom();
+                if (z > MIN_ZOOM) myMap.setZoom(z - 1);
+            };
+            const updBtns = () => {
+                const z = myMap.getZoom();
+                document.getElementById('zoomIn').disabled = z >= MAX_ZOOM;
+                document.getElementById('zoomOut').disabled = z <= MIN_ZOOM;
+            };
+            myMap.on('zoomend', updBtns);
+            updBtns();
+
+            // Закрыть легенду по клику на карту
+            myMap.on('click', () => {
+                const cb = document.getElementById('toggler__checkbox-id-1');
+                if (cb.checked) cb.checked = false;
+            });
+
+            // Инициализация: создаём маркеры и обновляем индекс
+            addMarkersFromDB();
+            setTimeout(updateIndex, 1000);
+        });
+    </script>
+</body>
+</html>
